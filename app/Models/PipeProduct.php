@@ -34,8 +34,10 @@ class PipeProduct extends Model
         $isDrat = (bool) $this->is_threaded;
         if (!$isDrat && !empty($this->description)) {
             $descUpper = strtoupper($this->description);
-            if ((str_contains($descUpper, 'THRD') || str_contains($descUpper, 'THREAD') || str_contains($descUpper, 'DRAT'))
-                && !str_contains($descUpper, 'NON-DRAT') && !str_contains($descUpper, 'NON DRAT')) {
+            if (
+                (str_contains($descUpper, 'THRD') || str_contains($descUpper, 'THREAD') || str_contains($descUpper, 'DRAT'))
+                && !str_contains($descUpper, 'NON-DRAT') && !str_contains($descUpper, 'NON DRAT')
+            ) {
                 $isDrat = true;
             }
         }

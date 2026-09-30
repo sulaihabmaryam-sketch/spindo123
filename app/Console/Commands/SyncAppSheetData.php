@@ -296,6 +296,18 @@ class SyncAppSheetData extends Command
         $count = 0;
         $zones = WarehouseZone::all()->keyBy(fn($z) => $z->code);
 
+        // Snapshot inventori saat ini sebelum sync untuk mendeteksi perubahan
+        $existingInventories = PipeInventory::with(['product', 'rack.zone'])->get()->keyBy('bundle_tag');
+        $processedTags = [];
+        $changeList = [];
+        $addedCount = 0;
+        $increasedCount = 0;
+        $decreasedCount = 0;
+        $removedCount = 0;
+        $unchangedCount = 0;
+        $netPcs = 0;
+        $netKg = 0;
+
         // Mapping SIKUTA gudang letters to WMS zone codes
         $gudangMap = [
             'A' => 'GUDANG-1', 'B' => 'GUDANG-2',
@@ -340,6 +352,9 @@ class SyncAppSheetData extends Command
             $kodeMaterial = $row['Kode Material'] ?? 'UNKNOWN';
             $deskripsiSikuta = $row['Deskripsi'] ?? null;
             $jenisPipa = $row['Jenis Pipa'] ?? 'PIPA';
+
+            $bundleTag = 'SIKUTA-' . $rackCode . '-' . $kodeMaterial;
+            $processedTags[$bundleTag] = true;
 
             if ($totalStok > 0) {
                 $product = PipeProduct::where('sap_code', $kodeMaterial)->first();
@@ -419,6 +434,66 @@ class SyncAppSheetData extends Command
                     ]);
                 }
 
+                // Hitung perbandingan perubahan stok (Diff)
+                $oldInv = $existingInventories->get($bundleTag);
+                $namaTampil = $product->nama_mudah ?? trim("{$cleanJenis} " . ($row['Ukuran'] ?? '') . " " . ($row['Kelas'] ?? '') . " {$kodeMaterial}");
+
+                if (!$oldInv) {
+                    // 1. BARU MASUK
+                    $addedCount++;
+                    $netPcs += $totalStok;
+                    $netKg += $tonaseKg;
+                    $changeList[] = [
+                        'type' => 'added',
+                        'type_label' => 'Baru Masuk',
+                        'rack_code' => $rackCode,
+                        'gudang' => $zone->name ?? $zoneCode,
+                        'material_code' => $kodeMaterial,
+                        'nama_mudah' => $namaTampil,
+                        'description' => $deskripsiSikuta ?: ($product->description ?? ''),
+                        'old_pcs' => 0,
+                        'new_pcs' => $totalStok,
+                        'diff_pcs' => +$totalStok,
+                        'old_ton' => 0,
+                        'new_ton' => round($tonaseKg / 1000, 2),
+                        'diff_ton' => +round($tonaseKg / 1000, 2),
+                    ];
+                } else {
+                    // 2. SUDAH ADA - CEK APAKAH BERUBAH
+                    $oldPcs = (int) $oldInv->qty_pcs;
+                    $oldKg = (float) $oldInv->total_weight_kg;
+                    $diffPcs = $totalStok - $oldPcs;
+                    $diffKg = $tonaseKg - $oldKg;
+
+                    if ($diffPcs != 0 || abs($diffKg) > 1.0) {
+                        $isUp = $diffPcs > 0;
+                        if ($isUp) {
+                            $increasedCount++;
+                        } else {
+                            $decreasedCount++;
+                        }
+                        $netPcs += $diffPcs;
+                        $netKg += $diffKg;
+                        $changeList[] = [
+                            'type' => $isUp ? 'increased' : 'decreased',
+                            'type_label' => $isUp ? 'Stok Bertambah' : 'Stok Berkurang',
+                            'rack_code' => $rackCode,
+                            'gudang' => $zone->name ?? $zoneCode,
+                            'material_code' => $kodeMaterial,
+                            'nama_mudah' => $namaTampil,
+                            'description' => $deskripsiSikuta ?: ($product->description ?? ($oldInv->description ?? '')),
+                            'old_pcs' => $oldPcs,
+                            'new_pcs' => $totalStok,
+                            'diff_pcs' => $diffPcs,
+                            'old_ton' => round($oldKg / 1000, 2),
+                            'new_ton' => round($tonaseKg / 1000, 2),
+                            'diff_ton' => round($diffKg / 1000, 2),
+                        ];
+                    } else {
+                        $unchangedCount++;
+                    }
+                }
+
                 // Hitung jumlah bundle
                 $qtyBundles = 0;
                 if ($product->pcs_per_bundle > 0) {
@@ -426,8 +501,6 @@ class SyncAppSheetData extends Command
                 }
 
                 // Upsert inventory
-                $bundleTag = 'SIKUTA-' . $rackCode . '-' . $kodeMaterial;
-
                 PipeInventory::updateOrCreate(
                     ['bundle_tag' => $bundleTag],
                     [
@@ -448,16 +521,83 @@ class SyncAppSheetData extends Command
                     ]
                 );
             } else {
-                // Stok = 0 di SIKUTA → hapus inventory record lama supaya tidak muncul di WMS
-                $bundleTag = 'SIKUTA-' . $rackCode . '-' . $kodeMaterial;
+                // Stok = 0 di SIKUTA → hapus inventory record lama
+                $oldInv = $existingInventories->get($bundleTag);
+                if ($oldInv && $oldInv->qty_pcs > 0) {
+                    $oldPcs = (int) $oldInv->qty_pcs;
+                    $oldKg = (float) $oldInv->total_weight_kg;
+                    $removedCount++;
+                    $netPcs -= $oldPcs;
+                    $netKg -= $oldKg;
+                    $changeList[] = [
+                        'type' => 'removed',
+                        'type_label' => 'Habis / Keluar',
+                        'rack_code' => $rackCode,
+                        'gudang' => $zone->name ?? $zoneCode,
+                        'material_code' => $kodeMaterial,
+                        'nama_mudah' => $oldInv->product?->nama_mudah ?? $kodeMaterial,
+                        'description' => $oldInv->description ?? ($oldInv->product?->description ?? ''),
+                        'old_pcs' => $oldPcs,
+                        'new_pcs' => 0,
+                        'diff_pcs' => -$oldPcs,
+                        'old_ton' => round($oldKg / 1000, 2),
+                        'new_ton' => 0,
+                        'diff_ton' => -round($oldKg / 1000, 2),
+                    ];
+                }
                 PipeInventory::where('bundle_tag', $bundleTag)->delete();
             }
             $count++;
         }
+
+        // Cek item inventori lama yang tidak lagi ada sama sekali di data SIKUTA
+        foreach ($existingInventories as $tag => $oldInv) {
+            if (!isset($processedTags[$tag]) && $oldInv->qty_pcs > 0) {
+                PipeInventory::where('bundle_tag', $tag)->delete();
+                $oldPcs = (int) $oldInv->qty_pcs;
+                $oldKg = (float) $oldInv->total_weight_kg;
+                $removedCount++;
+                $netPcs -= $oldPcs;
+                $netKg -= $oldKg;
+                $changeList[] = [
+                    'type' => 'removed',
+                    'type_label' => 'Habis / Keluar',
+                    'rack_code' => $oldInv->rack?->rack_code ?? 'UNKNOWN',
+                    'gudang' => $oldInv->rack?->zone?->name ?? 'GUDANG',
+                    'material_code' => $oldInv->sikuta_kode_material ?? ($oldInv->product?->sap_code ?? 'UNKNOWN'),
+                    'nama_mudah' => $oldInv->product?->nama_mudah ?? 'UNKNOWN',
+                    'description' => $oldInv->description ?? ($oldInv->product?->description ?? ''),
+                    'old_pcs' => $oldPcs,
+                    'new_pcs' => 0,
+                    'diff_pcs' => -$oldPcs,
+                    'old_ton' => round($oldKg / 1000, 2),
+                    'new_ton' => 0,
+                    'diff_ton' => -round($oldKg / 1000, 2),
+                ];
+            }
+        }
+
+        // Simpan laporan perubahan ke Cache (tersedia selama 7 hari)
+        $syncReport = [
+            'synced_at' => now()->toIso8601String(),
+            'summary' => [
+                'total_changes' => count($changeList),
+                'added_count' => $addedCount,
+                'increased_count' => $increasedCount,
+                'decreased_count' => $decreasedCount,
+                'removed_count' => $removedCount,
+                'unchanged_count' => $unchangedCount,
+                'net_pcs' => $netPcs,
+                'net_ton' => round($netKg / 1000, 2),
+            ],
+            'items' => $changeList,
+        ];
+
+        \Illuminate\Support\Facades\Cache::put('sikuta_last_sync_changes', $syncReport, now()->addDays(7));
+
         $this->info("   → {$count} status stok synced");
+        $this->info("   → Perubahan data: {$addedCount} baru, {$increasedCount} naik, {$decreasedCount} turun, {$removedCount} keluar");
     }
-
-
 
     protected function generateSloc(string $blockCode): string
     {

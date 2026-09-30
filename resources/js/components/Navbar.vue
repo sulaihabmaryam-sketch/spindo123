@@ -15,10 +15,20 @@
         <!-- Right Controls -->
         <div class="flex items-center space-x-2">
           <!-- SIKUTA Sync Status -->
-          <div v-if="syncInfo" class="hidden items-center space-x-1.5 mr-1 sm:flex" role="status" aria-live="polite">
+          <button
+            v-if="syncInfo"
+            @click="$emit('view-last-sync')"
+            class="hidden items-center space-x-1.5 mr-1 sm:flex px-2 py-1 rounded transition hover:bg-iron-800/40 cursor-pointer border border-transparent hover:border-iron-700/60"
+            role="status"
+            aria-live="polite"
+            title="Klik untuk melihat Laporan Sinkronisasi Terakhir"
+          >
             <span class="h-1.5 w-1.5 rounded-full" :class="syncInfo.mode === 'live' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'"></span>
-            <span :class="darkMode ? 'text-iron-500' : 'text-slate-400'" class="font-mono text-[9px] tracking-wider">{{ syncInfo.mode === 'live' ? 'SIKUTA LIVE' : 'MODE DEMO' }}</span>
-          </div>
+            <span :class="darkMode ? 'text-iron-400' : 'text-slate-500'" class="font-mono text-[9px] tracking-wider">{{ syncInfo.mode === 'live' ? 'SIKUTA LIVE' : 'MODE DEMO' }}</span>
+            <span v-if="syncInfo.last_changes?.summary?.total_changes !== undefined" :class="syncInfo.last_changes.summary.total_changes > 0 ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-iron-800 text-iron-500 border border-iron-700/50'" class="ml-1 rounded px-1 text-[8px] font-mono border">
+              {{ syncInfo.last_changes.summary.total_changes }} ubah
+            </span>
+          </button>
           <button
             @click="$emit('sync-sikuta')"
             :disabled="syncing"
@@ -64,5 +74,5 @@ defineProps({
   syncing: { type: Boolean, default: false },
 });
 
-defineEmits(['refresh', 'toggle-theme', 'sync-sikuta']);
+defineEmits(['refresh', 'toggle-theme', 'sync-sikuta', 'view-last-sync']);
 </script>

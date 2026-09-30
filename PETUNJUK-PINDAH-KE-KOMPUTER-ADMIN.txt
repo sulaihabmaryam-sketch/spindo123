@@ -1,0 +1,48 @@
+================================================================================
+   PANDUAN MEMINDAHKAN & MENJALANKAN WMS SPINDO KE KOMPUTER ADMIN GUDANG
+================================================================================
+
+A. YANG HARUS DISALIN (COPY) KE FLASHDISK DARI LAPTOP INI:
+----------------------------------------------------------
+1. Folder: C:\php
+2. Folder: Project-Supply-Chain-Spindo
+   (Folder ini sudah dibersihkan total dari node_modules & file sampah,
+    ukurannya sangat ringan dan cepat disalin ke flashdisk).
+
+
+B. CARA PASANG DI KOMPUTER ADMIN GUDANG:
+-----------------------------------------
+1. Colok Flashdisk ke Komputer Admin Gudang (IP 192.168.8.8).
+2. Salin folder "php" ke dalam "Local Disk (C:)" sehingga lokasinya menjadi:
+   -> C:\php
+3. Salin folder "Project-Supply-Chain-Spindo" ke "Local Disk (C:)" atau Desktop:
+   -> C:\Project-Supply-Chain-Spindo
+4. Buka folder "Project-Supply-Chain-Spindo" tersebut, lalu:
+   a. KLIK 2X file: "BUAT-SHORTCUT-DI-DESKTOP.bat"
+      (Untuk membuat icon di desktop)
+   b. (OPSIONAL jika komputer lain ingin ikut akses):
+      Klik KANAN file: "IZINKAN-FIREWALL.bat" -> pilih "Run as administrator"
+      (Hanya perlu dilakukan 1x saja agar port 8000 tidak diblokir Windows)
+
+
+C. CARA MENGGUNAKAN SEHARI-HARI (PRAKTIS 1-KLIK):
+-------------------------------------------------
+Setelah langkah di atas, di Desktop Komputer Admin akan ada 2 icon:
+
+1. [🚀 WMS Denah dan Stok Spindo]
+   - Cukup KLIK 2X icon ini!
+   - Server otomatis menyala di background dan browser langsung terbuka.
+   - Tidak perlu buka CMD atau ketik perintah apa pun lagi.
+
+2. [🛑 Matikan Server WMS Spindo]
+   - Jika sudah selesai kerja atau hendak pulang, KLIK 2X icon ini.
+   - Server langsung mati dan berhenti menggunakan memori komputer.
+
+
+D. AKSES DARI KOMPUTER / HP LAIN DI GUDANG:
+--------------------------------------------
+Komputer lain yang terhubung ke jaringan/WiFi yang sama cukup buka Google Chrome
+lalu ketik alamat:
+-> http://192.168.8.8:8000
+
+================================================================================

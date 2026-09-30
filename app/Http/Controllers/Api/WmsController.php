@@ -38,7 +38,9 @@ class WmsController extends Controller
             }
 
             $appSheet = app(\App\Services\AppSheetService::class);
-            $table = $request->input('table', 'all');
+            // Default to fast stock sync (10s). If products empty, sync all.
+            $defaultTable = \App\Models\PipeProduct::count() > 0 ? 'stok' : 'all';
+            $table = $request->input('table', $defaultTable);
 
             // Flush cache for fresh data
             $appSheet->flushCache();
@@ -51,23 +53,19 @@ class WmsController extends Controller
 
             $output = \Illuminate\Support\Facades\Artisan::output();
 
-            // Parse sync counts from artisan output
-            $gudangCount = 0;
-            $blokCount = 0;
-            $produkCount = 0;
-            $stokCount = 0;
-            if (preg_match('/(\d+) gudang synced/', $output, $m)) $gudangCount = (int) $m[1];
-            if (preg_match('/(\d+) blok synced/', $output, $m)) $blokCount = (int) $m[1];
-            if (preg_match('/(\d+) produk synced/', $output, $m)) $produkCount = (int) $m[1];
-            if (preg_match('/(\d+) status stok synced/', $output, $m)) $stokCount = (int) $m[1];
+            $totalProducts = \App\Models\PipeProduct::count();
+            $totalRacks = \App\Models\WarehouseRack::count();
+
+            $gudangCount = preg_match('/(\d+) gudang synced/', $output, $m) ? (int) $m[1] : \App\Models\WarehouseZone::count();
+            $blokCount = preg_match('/(\d+) blok synced/', $output, $m) ? (int) $m[1] : $totalRacks;
+            $produkCount = preg_match('/(\d+) produk synced/', $output, $m) ? (int) $m[1] : $totalProducts;
+            $stokCount = preg_match('/(\d+) status stok synced/', $output, $m) ? (int) $m[1] : 0;
 
             // Get actual database stats after sync
-            $totalRacks = \App\Models\WarehouseRack::count();
             $racksWithStock = \App\Models\WarehouseRack::where('current_weight_tons', '>', 0)->count();
             $totalInventory = \App\Models\PipeInventory::count();
             $totalPcs = \App\Models\PipeInventory::sum('qty_pcs');
             $totalWeightKg = \App\Models\PipeInventory::sum('total_weight_kg');
-            $totalProducts = \App\Models\PipeProduct::count();
 
             // Top 5 materials by stock quantity
             $topMaterials = \App\Models\PipeInventory::select(
@@ -87,6 +85,7 @@ class WmsController extends Controller
                 ]);
 
             $isSuccess = $stokCount > 0;
+            $changes = \Illuminate\Support\Facades\Cache::get('sikuta_last_sync_changes');
 
             return response()->json([
                 'status' => $isSuccess ? 'success' : 'warning',
@@ -96,6 +95,7 @@ class WmsController extends Controller
                 'data' => [
                     'output' => $output,
                     'last_sync' => $appSheet->getLastSync(),
+                    'changes' => $changes,
                     'detail' => [
                         'gudang_synced' => $gudangCount,
                         'blok_synced' => $blokCount,
@@ -125,6 +125,7 @@ class WmsController extends Controller
     public function syncStatus(): JsonResponse
     {
         $appSheet = app(\App\Services\AppSheetService::class);
+        $lastChanges = \Illuminate\Support\Facades\Cache::get('sikuta_last_sync_changes');
 
         return response()->json([
             'status' => 'success',
@@ -132,6 +133,7 @@ class WmsController extends Controller
                 'last_sync' => $appSheet->getLastSync(),
                 'connection' => ['connected' => true, 'mode' => 'live', 'message' => 'SIKUTA Live'],
                 'mode' => 'live',
+                'last_changes' => $lastChanges,
             ],
         ]);
     }
