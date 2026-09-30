@@ -16,15 +16,17 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // ─── Admin User ───
-        User::create([
-            'name' => 'Admin WMS Spindo',
-            'email' => 'admin@spindo.co.id',
-            'password' => Hash::make('spindo2026'),
-        ]);
+        User::updateOrCreate(
+            ['email' => 'admin@spindo.co.id'],
+            [
+                'name' => 'Admin WMS Spindo',
+                'password' => Hash::make('spindo2026'),
+            ]
+        );
 
         // ─── Pipe Categories ───
-        $catHitam = PipeCategory::create(['code' => 'PH', 'name' => 'Pipa Hitam']);
-        $catGalva = PipeCategory::create(['code' => 'PG', 'name' => 'Pipa Galvanis']);
+        $catHitam = PipeCategory::updateOrCreate(['code' => 'PH'], ['name' => 'Pipa Hitam']);
+        $catGalva = PipeCategory::updateOrCreate(['code' => 'PG'], ['name' => 'Pipa Galvanis']);
 
         // Data Dummy Pipa (Produk) sudah dihapus agar tidak tercampur dengan SIKUTA.
 
